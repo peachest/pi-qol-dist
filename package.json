@@ -1,0 +1,26 @@
+{
+  "name": "@peachest/pi-qol-dist",
+  "version": "2.4.0-b1",
+  "description": "Pre-bundled @vanillagreen/pi-qol (esbuild) — removes jiti transpile tax at Pi startup (-800ms). Auto-built from upstream; see README.",
+  "license": "MIT",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "coding-agent",
+    "qol"
+  ],
+  "pi": {
+    "extensions": [
+      "./dist/qol.js"
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/peachest/pi-qol-dist.git"
+  },
+  "upstream": {
+    "package": "@vanillagreen/pi-qol",
+    "version": "2.4.0",
+    "url": "https://github.com/vanillagreencom/kendex/tree/main/pi-extensions/pi-qol"
+  }
+}
