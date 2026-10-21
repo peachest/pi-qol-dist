@@ -1,7 +1,7 @@
-// extensions/qol.ts
+// src/extensions/qol.ts
 import { join as join5 } from "node:path";
 
-// scripts/lane-retention.ts
+// src/scripts/lane-retention.ts
 import { lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 var LANE_FILE_MAX_AGE_MS = 5 * 24 * 60 * 60 * 1e3;
@@ -129,10 +129,10 @@ function pruneLanes(root, below = [], now = Date.now()) {
   return result;
 }
 
-// extensions/qol.ts
+// src/extensions/qol.ts
 import { truncateToWidth as truncateToWidth9 } from "@earendil-works/pi-tui";
 
-// extensions/qol/agent-end.ts
+// src/extensions/qol/agent-end.ts
 function textFromContent(content) {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
@@ -173,7 +173,7 @@ function taskStats(state) {
   return { completed, remaining, total };
 }
 
-// extensions/qol/constants.ts
+// src/extensions/qol/constants.ts
 var INSTALL_SYMBOL = /* @__PURE__ */ Symbol.for("kendex.pi-qol.installed");
 var CONFIG_ID = "@vanillagreen/pi-qol";
 var STATUS_KEY = "qol-attachments";
@@ -273,7 +273,7 @@ Files involved:
 ## Task
 [Clear description of what to do next based on user's goal]`;
 
-// extensions/qol/bridges.ts
+// src/extensions/qol/bridges.ts
 function readCavemanBridge() {
   const host = globalThis;
   const value = host[CAVEMAN_BRIDGE_SYMBOL];
@@ -310,7 +310,7 @@ function acquirekendexModalLock() {
   };
 }
 
-// extensions/qol/budget-guard.ts
+// src/extensions/qol/budget-guard.ts
 function computeBudgetTrigger(input) {
   if (!input.enabled) return void 0;
   if (!Number.isFinite(input.tokens) || input.tokens <= 0) return void 0;
@@ -535,7 +535,7 @@ ${partial.summary.trim()}`);
   }
 }
 
-// extensions/qol/budget-guard-runtime.ts
+// src/extensions/qol/budget-guard-runtime.ts
 var BudgetGuardDriver = class {
   generation = 0;
   satisfiedTrigger;
@@ -686,7 +686,7 @@ var BudgetGuardDriver = class {
   }
 };
 
-// extensions/qol/ansi.ts
+// src/extensions/qol/ansi.ts
 var ANSI_PATTERN = /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\))/g;
 var ANSI_ESCAPE_RE = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 var ANSI_GREEN_FG = "\x1B[32m";
@@ -763,7 +763,7 @@ function applyVisibleReplacements(input, map, replacements) {
   return output + input.slice(lastRawIndex);
 }
 
-// extensions/qol/pi-ai-compat.ts
+// src/extensions/qol/pi-ai-compat.ts
 import * as piAi from "@earendil-works/pi-ai";
 var dynamicImport = (specifier) => import(specifier);
 async function complete(model, context, options, deps = {}) {
@@ -778,14 +778,14 @@ async function retryAssistantCallCompat(produce, signal, callbacks, deps = {}) {
   return candidate(produce, { enabled: true, maxRetries: 3, baseDelayMs: 2e3 }, signal, callbacks);
 }
 
-// extensions/qol/compaction.ts
+// src/extensions/qol/compaction.ts
 import { convertToLlm, serializeConversation } from "@earendil-works/pi-coding-agent";
 
-// extensions/qol/compaction-handoff.ts
+// src/extensions/qol/compaction-handoff.ts
 import { writeFileSync as writeFileSync2 } from "node:fs";
 import { basename, dirname as dirname2, join as join3 } from "node:path";
 
-// extensions/qol/package-config.ts
+// src/extensions/qol/package-config.ts
 import { existsSync, readFileSync as readFileSync2 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join as join2, resolve } from "node:path";
@@ -1022,7 +1022,7 @@ function installSettingsCacheRefresh(pi) {
   });
 }
 
-// extensions/qol/compaction-handoff.ts
+// src/extensions/qol/compaction-handoff.ts
 function safeFileName(value) {
   return value.replace(/[^\w.-]+/g, "_");
 }
@@ -1124,7 +1124,7 @@ function writeBudgetHandoffArtifact(handoff, options) {
   }
 }
 
-// extensions/qol/settings.ts
+// src/extensions/qol/settings.ts
 function piCompactionEnabled(cwd) {
   let enabled;
   for (const file of readSettingsFiles(piSettingsPaths(cwd))) {
@@ -1162,7 +1162,7 @@ function boundedSettingNumber(key, fallback, min, max, cwd) {
   return Math.max(min, Math.min(max, Math.floor(settingNumber(key, fallback, cwd))));
 }
 
-// extensions/qol/util.ts
+// src/extensions/qol/util.ts
 function stringifyError(error) {
   return error instanceof Error ? error.message : String(error);
 }
@@ -1170,9 +1170,57 @@ function escapeRegex(input) {
   return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// extensions/qol/compaction.ts
-function compactionNotify(ctx, message2, level = "info") {
-  if (ctx.hasUI && settingBoolean("compaction.notify", true, ctx.cwd)) ctx.ui.notify(message2, level);
+// src/extensions/qol/gateway-privacy.ts
+function isRecord2(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function gatewayPrivacyCovers(model, cwd) {
+  const provider = model?.provider;
+  return (provider === "openrouter" || provider === "vercel-ai-gateway") && settingBoolean("gatewayPrivacy.enabled", false, cwd);
+}
+function gatewayPrivacyBlocksNativeSummary(ctx) {
+  recordProjectTrust(ctx);
+  return gatewayPrivacyCovers(ctx.model, ctx.cwd);
+}
+function gatewayPrivacyOnPayload(ctx) {
+  const cwd = ctx.cwd;
+  recordProjectTrust(ctx);
+  return (payload, model) => {
+    if (!gatewayPrivacyCovers(model, cwd)) return void 0;
+    const body = payload;
+    if (!isRecord2(body)) return void 0;
+    if (model?.provider === "openrouter") {
+      return {
+        ...body,
+        provider: {
+          ...isRecord2(body.provider) ? body.provider : {},
+          zdr: true,
+          data_collection: "deny"
+        }
+      };
+    }
+    const options = isRecord2(body.providerOptions) ? body.providerOptions : {};
+    return {
+      ...body,
+      providerOptions: {
+        ...options,
+        gateway: {
+          ...isRecord2(options.gateway) ? options.gateway : {},
+          zeroDataRetention: true,
+          disallowPromptTraining: true
+        }
+      }
+    };
+  };
+}
+function registerGatewayPrivacy(pi) {
+  pi.on("before_provider_request", (event, ctx) => gatewayPrivacyOnPayload(ctx)(event.payload, ctx.model));
+}
+
+// src/extensions/qol/compaction.ts
+function compactionNotify(ctx, message2, level = "info", required = false) {
+  if (ctx.hasUI && (required || settingBoolean("compaction.notify", true, ctx.cwd))) ctx.ui.notify(message2, level);
+  if (!ctx.hasUI && required) console.error(JSON.stringify({ source: "pi-qol", level, message: message2 }));
 }
 function compactionProfile(cwd) {
   const value = settingString("compaction.profile", "balanced", cwd);
@@ -1328,7 +1376,7 @@ async function singleShotSummary(ctx, request, options) {
     () => complete(
       model,
       { messages: [message2], systemPrompt: QOL_COMPACTION_SYSTEM_PROMPT },
-      { apiKey: auth.apiKey, env: auth.env, headers: auth.headers, maxTokens: options.maxTokens, signal: options.signal }
+      { apiKey: auth.apiKey, env: auth.env, headers: auth.headers, maxTokens: options.maxTokens, signal: options.signal, onPayload: gatewayPrivacyOnPayload(ctx) }
     ),
     options.signal,
     {
@@ -1392,13 +1440,14 @@ function writeBudgetHandoffArtifact2(ctx, handoff) {
 }
 async function handleQolCompaction(event, ctx) {
   const isBudgetGuard = isBudgetGuardCompaction(event?.customInstructions);
-  if (!isBudgetGuard && !settingBoolean("compaction.customEnabled", false, ctx.cwd)) return void 0;
+  const nativeBlocked = gatewayPrivacyBlocksNativeSummary(ctx);
+  const customEnabled = settingBoolean("compaction.customEnabled", false, ctx.cwd);
+  if (!isBudgetGuard && !nativeBlocked && !customEnabled) return void 0;
   const preparation = event.preparation ?? {};
   const messages = [...preparation.messagesToSummarize ?? [], ...preparation.turnPrefixMessages ?? []];
   if (messages.length === 0) return void 0;
   const tokensBefore = typeof preparation.tokensBefore === "number" ? preparation.tokensBefore : 0;
-  const handoff = buildBudgetHandoff2(ctx, { preparation, reason: event.customInstructions ?? "session_before_compact" });
-  const handoffResult = writeBudgetHandoffArtifact2(ctx, handoff);
+  const handoffResult = isBudgetGuard || customEnabled ? writeBudgetHandoffArtifact2(ctx, buildBudgetHandoff2(ctx, { preparation, reason: event.customInstructions ?? "session_before_compact" })) : {};
   const sourceLabel = isBudgetGuard ? "pi-qol budget-guard" : "pi-qol";
   compactionNotify(ctx, `QOL compaction: summarizing ${messages.length} message(s), ${tokensBefore.toLocaleString()} token(s)${isBudgetGuard ? " (budget guard)" : ""}.`, "info");
   try {
@@ -1436,8 +1485,8 @@ async function handleQolCompaction(event, ctx) {
     };
   } catch (error) {
     if (event.signal?.aborted) return void 0;
-    compactionNotify(ctx, `QOL compaction failed: ${stringifyError(error)}`, "error");
-    return settingBoolean("compaction.fallbackToDefault", true, ctx.cwd) ? void 0 : { cancel: true };
+    compactionNotify(ctx, `QOL compaction failed: ${stringifyError(error)}`, "error", nativeBlocked);
+    return !nativeBlocked && settingBoolean("compaction.fallbackToDefault", true, ctx.cwd) ? void 0 : { cancel: true };
   }
 }
 function summarizeEntryForBranch(entry) {
@@ -1448,7 +1497,8 @@ function summarizeEntryForBranch(entry) {
   return [];
 }
 async function handleQolBranchSummary(event, ctx) {
-  if (!settingBoolean("compaction.branchSummaryEnabled", false, ctx.cwd)) return void 0;
+  const nativeBlocked = gatewayPrivacyBlocksNativeSummary(ctx);
+  if (!nativeBlocked && !settingBoolean("compaction.branchSummaryEnabled", false, ctx.cwd)) return void 0;
   const preparation = event.preparation ?? {};
   if (preparation.userWantsSummary !== true) return void 0;
   const entries = Array.isArray(preparation.entriesToSummarize) ? preparation.entriesToSummarize : [];
@@ -1471,8 +1521,8 @@ async function handleQolBranchSummary(event, ctx) {
     };
   } catch (error) {
     if (event.signal?.aborted) return void 0;
-    compactionNotify(ctx, `QOL branch summary failed: ${stringifyError(error)}`, "error");
-    return void 0;
+    compactionNotify(ctx, `QOL branch summary failed: ${stringifyError(error)}`, "error", nativeBlocked);
+    return nativeBlocked ? { cancel: true } : void 0;
   }
 }
 function contextUsage(ctx) {
@@ -1518,12 +1568,12 @@ function budgetGuardTrigger(ctx) {
   });
 }
 
-// extensions/qol/context-usage.ts
+// src/extensions/qol/context-usage.ts
 import { existsSync as existsSync2, readFileSync as readFileSync3 } from "node:fs";
 import { isAbsolute } from "node:path";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
-// extensions/qol/transcript-risk.ts
+// src/extensions/qol/transcript-risk.ts
 import { convertToLlm as convertToLlm2, serializeConversation as serializeConversation2 } from "@earendil-works/pi-coding-agent";
 function stripThinking(messages) {
   return messages.map((message2) => {
@@ -1544,7 +1594,7 @@ function transcriptRiskState(messages, threshold) {
   }
 }
 
-// extensions/qol/context-usage.ts
+// src/extensions/qol/context-usage.ts
 function qcuSafeString(value) {
   if (typeof value === "string") return value;
   if (value == null) return "";
@@ -1981,11 +2031,11 @@ function renderQolContextUsageMessage(message2, _options, theme) {
   };
 }
 
-// extensions/qol/editor.ts
+// src/extensions/qol/editor.ts
 import { CustomEditor } from "@earendil-works/pi-coding-agent";
 import { matchesKey, truncateToWidth as truncateToWidth2, visibleWidth as visibleWidth2 } from "@earendil-works/pi-tui";
 
-// extensions/qol/glyphs.ts
+// src/extensions/qol/glyphs.ts
 var LOCAL_CONFIG_ID = "@vanillagreen/pi-qol";
 var GLOBAL_CONFIG_ID = "@vanillagreen/pi-tool-renderer";
 function asGlyphStyle(value) {
@@ -2036,7 +2086,7 @@ function glyphs(cwd) {
   return GLYPHS[glyphStyle(cwd)];
 }
 
-// extensions/qol/images.ts
+// src/extensions/qol/images.ts
 import { existsSync as existsSync3 } from "node:fs";
 import { open } from "node:fs/promises";
 import { basename as basename2, resolve as resolve2 } from "node:path";
@@ -2167,7 +2217,7 @@ function resolveSubmittedImagePaths(text, cwd) {
   return [...paths];
 }
 
-// extensions/qol/editor.ts
+// src/extensions/qol/editor.ts
 function styleAutocompleteHintItem(item, theme) {
   const label = stripAnsi(item.label || item.value);
   const styled = { ...item, label: theme.fg("accent", label) };
@@ -2325,7 +2375,7 @@ function currentEditorText(ctx) {
   }
 }
 
-// extensions/qol/handoff.ts
+// src/extensions/qol/handoff.ts
 import { BorderedLoader } from "@earendil-works/pi-coding-agent";
 function errorMessage(error) {
   const message2 = error instanceof Error ? error.message : String(error);
@@ -2382,7 +2432,7 @@ ${goal}`
         const response = await complete(
           ctx.model,
           { systemPrompt: HANDOFF_SYSTEM_PROMPT, messages: [userMessage] },
-          { apiKey: auth.apiKey, env: auth.env, headers: auth.headers, signal: loader.signal }
+          { apiKey: auth.apiKey, env: auth.env, headers: auth.headers, signal: loader.signal, onPayload: gatewayPrivacyOnPayload(ctx) }
         );
         if (response.stopReason === "aborted") return null;
         return response.content.filter((content) => content.type === "text").map((content) => content.text).join("\n");
@@ -2418,7 +2468,7 @@ ${goal}`
   }
 }
 
-// extensions/qol/notifications.ts
+// src/extensions/qol/notifications.ts
 import { execFile } from "node:child_process";
 import { constants } from "node:fs";
 import { open as open2 } from "node:fs/promises";
@@ -2666,7 +2716,7 @@ function notifyQuestionOpened(pi, ctx, event, keyPrefix = "question") {
   void sendQolNotification(pi, ctx, "question", `Input required: ${title}`, "warning", key);
 }
 
-// extensions/qol/pending-queue.ts
+// src/extensions/qol/pending-queue.ts
 import { Theme as Theme2 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 function isStatusTextAlignmentPatch(value) {
@@ -2752,7 +2802,7 @@ function restorePendingQueueThemePatch(_ctx) {
   delete proto[PENDING_QUEUE_THEME_PATCH_SYMBOL];
 }
 
-// extensions/qol/permission-gate.ts
+// src/extensions/qol/permission-gate.ts
 import { truncateToWidth as truncateToWidth3, visibleWidth as visibleWidth3 } from "@earendil-works/pi-tui";
 function splitPermissionGateCommands(raw) {
   return raw.split(",").map((entry) => entry.trim()).filter(Boolean);
@@ -2858,7 +2908,7 @@ function permissionGatePrompt(matched, command, cwd) {
   ].join("\n");
 }
 
-// extensions/qol/rate-limit-auto-resume.ts
+// src/extensions/qol/rate-limit-auto-resume.ts
 import { truncateToWidth as truncateToWidth4 } from "@earendil-works/pi-tui";
 var RATE_LIMIT_AUTO_RESUME_EVENT = "kendex:rate-limit";
 var DEFAULT_RATE_LIMIT_RESUME_MESSAGE = "Hit API rate limit. It has been reset. Continue";
@@ -3235,7 +3285,7 @@ function createRateLimitAutoResumeController(pi, clock = DEFAULT_CLOCK) {
   };
 }
 
-// extensions/qol/session-rename.ts
+// src/extensions/qol/session-rename.ts
 function autoRenameEnabled(cwd) {
   return settingBoolean("sessionAutoRename.enabled", true, cwd);
 }
@@ -3467,7 +3517,7 @@ ${query}` : autoRenamePrompt(query, cwd);
         const response = await complete(
           resolved.model,
           { messages: [message2], systemPrompt: AUTO_RENAME_SYSTEM_PROMPT },
-          { apiKey: resolved.apiKey, env: resolved.env, headers: resolved.headers, maxTokens, signal: controller.signal }
+          { apiKey: resolved.apiKey, env: resolved.env, headers: resolved.headers, maxTokens, signal: controller.signal, onPayload: gatewayPrivacyOnPayload(ctx) }
         );
         if (response.stopReason === "error") {
           autoRenameDebug(ctx, `${resolved.label} failed: ${response.errorMessage ?? "unknown error"}`, "warning");
@@ -3493,7 +3543,7 @@ function withAutoRenamePrefix(name, cwd) {
   return clampAutoRenameName(prefix ? `${prefix}: ${name}` : name, maxNameChars);
 }
 
-// extensions/qol/schedule.ts
+// src/extensions/qol/schedule.ts
 import { truncateToWidth as truncateToWidth5 } from "@earendil-works/pi-tui";
 var SCHEDULE_ENTRY_TYPE = "qol-schedule";
 var MAX_TIMER_DELAY_MS2 = 2147e6;
@@ -3772,13 +3822,13 @@ ${usageText()}`, "info");
   };
 }
 
-// extensions/qol/session-search/cache.ts
+// src/extensions/qol/session-search/cache.ts
 import { realpath } from "node:fs/promises";
 import { homedir as homedir2 } from "node:os";
 import { basename as basename3, dirname as dirname3, isAbsolute as isAbsolute2, join as join4, resolve as resolve3 } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 
-// extensions/qol/session-search/jsonl.ts
+// src/extensions/qol/session-search/jsonl.ts
 import { closeSync, createReadStream, openSync, readSync } from "node:fs";
 import { StringDecoder } from "node:string_decoder";
 async function forEachSessionJsonlLineAsync(sessionPath, onLine, signal, options) {
@@ -3842,7 +3892,7 @@ function forEachSessionJsonlLine(sessionPath, onLine, chunkSize = 64 * 1024) {
   }
 }
 
-// extensions/qol/session-search/cache.ts
+// src/extensions/qol/session-search/cache.ts
 var qolSessionSearchCache = [];
 var qolSessionSearchLoadedAt = 0;
 var qolSessionSearchLoading;
@@ -4150,13 +4200,13 @@ function pinSessionModel(sessionPath, model, thinkingLevel) {
   }
 }
 
-// extensions/qol/session-search/component.ts
+// src/extensions/qol/session-search/component.ts
 import { matchesKey as matchesKey2, truncateToWidth as truncateToWidth6, visibleWidth as visibleWidth4, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
-// extensions/qol/session-search/search.ts
+// src/extensions/qol/session-search/search.ts
 import { setImmediate as yieldToInput } from "node:timers/promises";
 
-// extensions/qol/session-search/regex.ts
+// src/extensions/qol/session-search/regex.ts
 import { Worker } from "node:worker_threads";
 function sessionRegexMatches(source, texts, signal) {
   signal.throwIfAborted();
@@ -4203,7 +4253,7 @@ function sessionRegexMatches(source, texts, signal) {
   });
 }
 
-// extensions/qol/session-search/search.ts
+// src/extensions/qol/session-search/search.ts
 function normalizeSearchText(text) {
   return text.toLowerCase().replace(/\s+/g, " ").trim();
 }
@@ -4358,7 +4408,7 @@ function formatSessionSearchDate(date) {
   return date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
-// extensions/qol/session-search/component.ts
+// src/extensions/qol/session-search/component.ts
 function wrapVisible(text, width, maxLines) {
   const wrapped = wrapTextWithAnsi(text, width);
   if (wrapped.length <= maxLines) return wrapped;
@@ -5271,7 +5321,7 @@ var QolSessionSearchLoadingComponent = class {
   }
 };
 
-// extensions/qol/session-search/context.ts
+// src/extensions/qol/session-search/context.ts
 import { SessionManager as SessionManager2 } from "@earendil-works/pi-coding-agent";
 import { Text as Text2 } from "@earendil-works/pi-tui";
 function trimSessionSummaryInput(text, cwd) {
@@ -5407,7 +5457,7 @@ function renderSessionSearchContextMessage(message2, options, theme) {
 ${body}` : header, 0, 0);
 }
 
-// extensions/qol/session-search/index.ts
+// src/extensions/qol/session-search/index.ts
 function asCommandContext(ctx) {
   return ctx;
 }
@@ -5553,7 +5603,7 @@ async function openQolSessionSearch(pi, ctx, initialQuery = "") {
   }
 }
 
-// extensions/qol/status-message.ts
+// src/extensions/qol/status-message.ts
 function autoCompactionStatus(gate, enabled) {
   switch (gate) {
     case "enabled":
@@ -5572,6 +5622,7 @@ function statusMessage(ctx) {
   const labels = attachmentLabels(currentEditorText(ctx), ctx.cwd);
   const searchShortcut = sessionSearchShortcut(ctx.cwd);
   const statuslineEnabled = settingBoolean("statusline.enabled", true, ctx.cwd);
+  const nativeBlocked = gatewayPrivacyBlocksNativeSummary(ctx);
   const statuslineMode = statuslineEnabled ? settingBoolean("replaceFooter", true, ctx.cwd) ? "enabled, replaces footer" : "enabled, footer preserved" : "disabled";
   return [
     "Pi QOL status",
@@ -5587,10 +5638,10 @@ function statusMessage(ctx) {
     `Schedule command: ${settingBoolean("enableScheduleCommand", true, ctx.cwd) ? "enabled (/schedule)" : "disabled"}`,
     `Handoff prompt review: ${settingBoolean("handoffReviewPrompt", true, ctx.cwd) ? "enabled" : "disabled"}`,
     `Session search: ${settingBoolean("sessionSearch.enabled", true, ctx.cwd) ? `enabled (/search${searchShortcut ? `, ${searchShortcut}` : ""})` : "disabled"}`,
-    `Custom compaction: ${settingBoolean("compaction.customEnabled", false, ctx.cwd) ? `enabled (${settingString("compaction.model", DEFAULT_COMPACTION_MODEL, ctx.cwd)}, ${compactionProfile(ctx.cwd)})` : "disabled (Pi default)"}`,
+    `Custom compaction: ${settingBoolean("compaction.customEnabled", false, ctx.cwd) ? `enabled (${settingString("compaction.model", DEFAULT_COMPACTION_MODEL, ctx.cwd)}, ${compactionProfile(ctx.cwd)})` : nativeBlocked ? "enabled by gateway privacy" : "disabled (Pi default)"}`,
     `Budget guard: ${autoCompactionStatus(autoCompactionGate("budgetGuard", ctx.cwd), () => `enabled (budgetPercent=${settingNumber("compaction.budgetPercent", DEFAULT_BUDGET_GUARD_PERCENT, ctx.cwd)}, budgetTokens=${settingNumber("compaction.budgetTokens", DEFAULT_BUDGET_GUARD_TOKENS, ctx.cwd)})`)}`,
     `Idle compaction: ${autoCompactionStatus(autoCompactionGate("idle", ctx.cwd), () => `enabled after ${Math.max(1, Math.floor(settingNumber("compaction.idleTimeoutSeconds", DEFAULT_IDLE_COMPACTION_SECONDS, ctx.cwd)))}s idle`)}`,
-    `Branch summary override: ${settingBoolean("compaction.branchSummaryEnabled", false, ctx.cwd) ? "enabled" : "disabled"}`,
+    `Branch summary override: ${settingBoolean("compaction.branchSummaryEnabled", false, ctx.cwd) ? "enabled" : nativeBlocked ? "enabled by gateway privacy" : "disabled"}`,
     `Notifications: ${settingBoolean("notification.enabled", true, ctx.cwd) ? `enabled (bell=${settingBoolean("notification.bell", true, ctx.cwd)}, muteBell=${settingBoolean("notification.muteBellSound", false, ctx.cwd)}, native=${settingBoolean("notification.native", true, ctx.cwd)}, tmuxClientTty=${settingBoolean("notification.tmuxNativeClientTty", true, ctx.cwd)}, tmuxMessage=${settingBoolean("notification.tmux", false, ctx.cwd)})` : "disabled"}`,
     `Permission gate: ${settingBoolean("permissionGate.enabled", false, ctx.cwd) ? `enabled (${permissionGateCommands(ctx.cwd).join(", ") || "none configured"}; preview ${boundedSettingNumber("permissionGate.previewLines", DEFAULT_PERMISSION_GATE_PREVIEW_LINES, 4, 40, ctx.cwd)} lines/${boundedSettingNumber("permissionGate.previewChars", DEFAULT_PERMISSION_GATE_PREVIEW_CHARS, 200, 5e3, ctx.cwd)} chars)` : "disabled"}`,
     `Thinking timer: ${settingBoolean("thinkingTimer.enabled", true, ctx.cwd) ? "enabled" : "disabled"}`,
@@ -5598,12 +5649,12 @@ function statusMessage(ctx) {
   ].join("\n");
 }
 
-// extensions/qol/statusline.ts
+// src/extensions/qol/statusline.ts
 import { execFile as execFile2 } from "node:child_process";
 import { basename as basename4 } from "node:path";
 import { truncateToWidth as truncateToWidth8, visibleWidth as visibleWidth5 } from "@earendil-works/pi-tui";
 
-// extensions/qol/agent-statusline.ts
+// src/extensions/qol/agent-statusline.ts
 import { truncateToWidth as truncateToWidth7 } from "@earendil-works/pi-tui";
 var AGENT_ASCII_COLOR_SEQUENCE = ["magenta", "green", "blue", "cyan", "yellow", "red"];
 var AGENT_ASCII_BG = {
@@ -5656,7 +5707,7 @@ function subagentStatuslineMarker(cwd, maxInnerWidth = 24) {
   return { plain, styled: ansiAgentBg(color, plain) };
 }
 
-// extensions/qol/statusline.ts
+// src/extensions/qol/statusline.ts
 function repoNameFromRemote(remote) {
   const trimmed = remote.trim().replace(/\.git$/, "");
   const match = trimmed.match(/([^/:]+)$/);
@@ -5886,7 +5937,7 @@ function renderStatusLine(width, ctx, git, pi, theme, workingIndicator = "") {
   return truncateToWidth8(`${workingPrefix}${leftColored} ${bar} ${right}`, width, "");
 }
 
-// extensions/qol/thinking-timer.ts
+// src/extensions/qol/thinking-timer.ts
 import { AssistantMessageComponent } from "@earendil-works/pi-coding-agent";
 function getThinkingTimerStore() {
   return globalThis[THINKING_TIMER_STORE_SYMBOL];
@@ -5962,12 +6013,13 @@ function installThinkingTimerPatch() {
   };
 }
 
-// extensions/qol.ts
+// src/extensions/qol.ts
 function qol(pi) {
   const guard = pi;
   if (guard[INSTALL_SYMBOL]) return;
   guard[INSTALL_SYMBOL] = true;
   if (!settingBoolean("enabled", true)) return;
+  registerGatewayPrivacy(pi);
   installThinkingTimerPatch();
   const thinkingTimerStore = {
     enabled: false,
