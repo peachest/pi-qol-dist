@@ -766,11 +766,21 @@ function applyVisibleReplacements(input, map, replacements) {
 // src/extensions/qol/pi-ai-compat.ts
 import * as piAi from "@earendil-works/pi-ai";
 var dynamicImport = (specifier) => import(specifier);
-async function complete(model, context, options, deps = {}) {
-  const rootComplete = (deps.root ?? piAi).complete;
-  if (typeof rootComplete === "function") return await rootComplete(model, context, options);
+async function dispatchCompletion(name, model, context, options, deps) {
+  const rootFunction = (deps.root ?? piAi)[name];
+  if (typeof rootFunction === "function") return await rootFunction(model, context, options);
   const compat = deps.loadCompat ? await deps.loadCompat() : await dynamicImport("@earendil-works/pi-ai/compat");
-  return await compat.complete(model, context, options);
+  return await compat[name](model, context, options);
+}
+async function complete(model, context, options, deps = {}) {
+  return await dispatchCompletion("complete", model, context, options, deps);
+}
+async function completeSimple(model, context, options, deps = {}) {
+  return await dispatchCompletion("completeSimple", model, context, options, deps);
+}
+function lowestReasoningLevel(model, deps = {}) {
+  const [lowest] = (deps.root ?? piAi).getSupportedThinkingLevels(model);
+  return lowest === "off" ? void 0 : lowest;
 }
 async function retryAssistantCallCompat(produce, signal, callbacks, deps = {}) {
   const candidate = (deps.root ?? piAi).retryAssistantCall;
@@ -3439,6 +3449,16 @@ function headerRecord(headers) {
   const entries = Object.entries(headers).filter((entry) => entry[1] === null || typeof entry[1] === "string" && entry[1].length > 0);
   return entries.length > 0 ? Object.fromEntries(entries) : void 0;
 }
+function autoRenameAuth(model, auth, source) {
+  return {
+    apiKey: auth.apiKey,
+    env: auth.env,
+    headers: headerRecord(auth.headers),
+    label: modelLabel(model),
+    model: auth.baseUrl ? { ...model, baseUrl: auth.baseUrl } : model,
+    source
+  };
+}
 function modelCost(model) {
   const cost = model?.cost;
   return Number(cost?.input ?? 0) + Number(cost?.output ?? 0);
@@ -3457,8 +3477,7 @@ async function cheapestAvailableAutoRenameModel(ctx) {
   for (const model of models) {
     try {
       const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-      const headers = headerRecord(auth.headers);
-      if (auth.ok) return { apiKey: auth.apiKey, env: auth.env, headers, label: modelLabel(model), model, source: "cheapest" };
+      if (auth.ok) return autoRenameAuth(model, auth, "cheapest");
     } catch (error) {
       if (isStaleCtxError(error)) return void 0;
     }
@@ -3475,12 +3494,11 @@ async function resolveAutoRenameModel(ctx, configured) {
     }
     try {
       const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-      const headers = headerRecord(auth.headers);
       if (!auth.ok) {
         autoRenameDebug(ctx, `auth unavailable for ${modelLabel(model)}: ${auth.error}`, "warning");
         return void 0;
       }
-      return { apiKey: auth.apiKey, env: auth.env, headers, label: modelLabel(model), model, source: configured };
+      return autoRenameAuth(model, auth, configured);
     } catch (error) {
       if (isStaleCtxError(error)) return void 0;
       autoRenameDebug(ctx, `auth failed for ${modelLabel(model)}: ${stringifyError(error)}`, "warning");
@@ -3514,10 +3532,10 @@ ${query}` : autoRenamePrompt(query, cwd);
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
       timeout.unref?.();
       try {
-        const response = await complete(
+        const response = await completeSimple(
           resolved.model,
           { messages: [message2], systemPrompt: AUTO_RENAME_SYSTEM_PROMPT },
-          { apiKey: resolved.apiKey, env: resolved.env, headers: resolved.headers, maxTokens, signal: controller.signal, onPayload: gatewayPrivacyOnPayload(ctx) }
+          { apiKey: resolved.apiKey, env: resolved.env, headers: resolved.headers, maxTokens, reasoning: lowestReasoningLevel(resolved.model), signal: controller.signal, onPayload: gatewayPrivacyOnPayload(ctx) }
         );
         if (response.stopReason === "error") {
           autoRenameDebug(ctx, `${resolved.label} failed: ${response.errorMessage ?? "unknown error"}`, "warning");
