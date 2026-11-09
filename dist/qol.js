@@ -6008,11 +6008,12 @@ function installThinkingTimerPatch() {
       const labelComponents = [];
       for (const child of this.contentContainer.children) {
         if (!child || typeof child !== "object") continue;
-        if (typeof child.setText !== "function") continue;
-        if (typeof child.text !== "string") continue;
+        const label = child.child ?? child;
+        if (typeof label.setText !== "function") continue;
+        if (typeof label.text !== "string") continue;
         const expectedLabel = thinkingLabel(store.cwd);
-        if (!child.text.includes(expectedLabel) && !child.text.includes("Thinking...")) continue;
-        labelComponents.push(child);
+        if (!label.text.includes(expectedLabel) && !label.text.includes("Thinking...")) continue;
+        labelComponents.push(label);
       }
       if (labelComponents.length === 0) return;
       const count = Math.min(thinkingIndices.length, labelComponents.length);
