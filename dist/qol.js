@@ -175,7 +175,7 @@ function taskStats(state) {
 
 // src/extensions/qol/constants.ts
 var INSTALL_SYMBOL = /* @__PURE__ */ Symbol.for("kendex.pi-qol.installed");
-var CONFIG_ID = "@vanillagreen/pi-qol";
+var CONFIG_ID = "@peachest/pi-qol-dist";
 var STATUS_KEY = "qol-attachments";
 var SESSION_SEARCH_STATUS_KEY = "qol-session-search";
 var SESSION_SEARCH_CONTEXT_TYPE = "qol-session-context";
@@ -2046,7 +2046,7 @@ import { CustomEditor } from "@earendil-works/pi-coding-agent";
 import { matchesKey, truncateToWidth as truncateToWidth2, visibleWidth as visibleWidth2 } from "@earendil-works/pi-tui";
 
 // src/extensions/qol/glyphs.ts
-var LOCAL_CONFIG_ID = "@vanillagreen/pi-qol";
+var LOCAL_CONFIG_ID = "@peachest/pi-qol-dist";
 var GLOBAL_CONFIG_ID = "@vanillagreen/pi-tool-renderer";
 function asGlyphStyle(value) {
   return value === "unicode" || value === "ascii" ? value : void 0;

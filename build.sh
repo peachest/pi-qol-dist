@@ -7,6 +7,15 @@ export TMPDIR="${TMPDIR:-$HOME/tmp}"
 npx -y esbuild src/extensions/qol.ts --bundle --platform=node --format=esm \
   --outfile=dist/qol.js \
   --external:@earendil-works/* --external:node:*
+# Match the installed package name used by extension-manager settings.
+node --input-type=module -e '
+  import { readFileSync, writeFileSync } from "node:fs";
+  const path = "dist/qol.js";
+  const content = readFileSync(path, "utf8");
+  const upstream = "\"@vanillagreen/pi-qol\"";
+  if (content.split(upstream).length !== 3) throw new Error("Expected two upstream QOL config IDs; inspect upstream changes");
+  writeFileSync(path, content.replaceAll(upstream, "\"@peachest/pi-qol-dist\""));
+'
 cp src/extensions/qol/session-search/regex-worker.mjs dist/
 # Carry upstream kendex.extensionManager metadata (displayName + settings schema):
 # extension-manager builds its quick-settings tabs from the installed package.json,

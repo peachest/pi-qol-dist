@@ -24,4 +24,4 @@ pi install git:github.com/peachest/pi-qol-dist#dist-main
 
 ## 构建
 
-`./build.sh`（期望 `src/` 已有上游快照）。
+`./build.sh`（期望 `src/` 已有上游快照）。构建结果使用 `kendex.extensionManager.config["@peachest/pi-qol-dist"]`，与扩展管理器的包名一致；升级前应将原 `@vanillagreen/pi-qol` 配置迁移到该配置块，并处理重复键。
