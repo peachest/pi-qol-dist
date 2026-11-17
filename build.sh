@@ -4,6 +4,17 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 export TMPDIR="${TMPDIR:-$HOME/tmp}"
+# Local patches applied over the upstream snapshot in src/. The daily upstream
+# sync replaces src/ wholesale; patches re-apply here on every build and fail
+# loudly on conflict instead of silently dropping local changes.
+# NOTE: no nullglob — it would silently delete the unquoted globs in the
+# esbuild --external:<pkg>/* flags below.
+for patch in patches/*.patch; do
+  [ -e "$patch" ] || continue
+  echo "applying local patch: $patch"
+  git apply --check "$patch"
+  git apply "$patch"
+done
 npx -y esbuild src/extensions/qol.ts --bundle --platform=node --format=esm \
   --outfile=dist/qol.js \
   --external:@earendil-works/* --external:node:*

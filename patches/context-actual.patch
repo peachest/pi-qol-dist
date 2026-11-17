@@ -1,0 +1,197 @@
+diff --git a/src/extensions/qol/context-usage.ts b/src/extensions/qol/context-usage.ts
+index 6107896..85e62e1 100644
+--- a/src/extensions/qol/context-usage.ts
++++ b/src/extensions/qol/context-usage.ts
+@@ -326,6 +326,57 @@ function qcuExtractProjectAgents(systemPrompt: string): { agents: QolContextDeta
+ 	return { agents: qcuUniqDetails(agents), tokens: qcuEstimateTokens(section) };
+ }
+ 
++/**
++ * Split pi's rendered system prompt into its named sections.
++ * Pi renders `<name>\n...\n</name>` blocks after an untagged preamble; section
++ * names match /^[a-z][a-z0-9_-]*$/ (pi system-prompt.js). Nested tags with
++ * different names (<project_instructions> inside <project_context>) stay
++ * inside their parent section.
++ */
++function qcuParsePromptSections(systemPrompt: string): Map<string, string> {
++	const sections = new Map<string, string>();
++	const re = /\n<([a-z][a-z0-9_-]*)>\n[\s\S]*?\n<\/\1>/g;
++	let match;
++	while ((match = re.exec(systemPrompt)) !== null) {
++		if (!sections.has(match[1])) sections.set(match[1], match[0].slice(1));
++	}
++	return sections;
++}
++
++/** Per-skill breakdown from the actually rendered <skills> section. */
++function qcuSkillsFromPrompt(skillsSection: string | undefined): QolContextDetailItem[] {
++	if (!skillsSection) return [];
++	const items: QolContextDetailItem[] = [];
++	const re = /\n {2}<skill>\n([\s\S]*?)\n {2}<\/skill>/g;
++	let match;
++	while ((match = re.exec(skillsSection)) !== null) {
++		const block = match[1];
++		const name = block.match(/<name>([\s\S]*?)<\/name>/)?.[1] ?? "skill";
++		const description = block.match(/<description>([\s\S]*?)<\/description>/)?.[1];
++		const location = block.match(/<location>([\s\S]*?)<\/location>/)?.[1] ?? "";
++		const group = location.includes("/.agents/") || location.includes("/.pi/") ? "user" : location ? "project" : undefined;
++		items.push({
++			description: description ? qcuOneLine(description, 120) : undefined,
++			group,
++			label: qcuOneLine(name, 90),
++			tokens: qcuEstimateTokens(match[0]),
++		});
++	}
++	return items;
++}
++
++/** Per-file breakdown from the actually rendered <project_context> section. */
++function qcuContextFilesFromPrompt(projectContext: string | undefined): QolContextDetailItem[] {
++	if (!projectContext) return [];
++	const items: QolContextDetailItem[] = [];
++	const re = /<project_instructions path="([^"]*)">\n[\s\S]*?\n<\/project_instructions>/g;
++	let match;
++	while ((match = re.exec(projectContext)) !== null) {
++		items.push({ label: qcuOneLine(match[1], 90), tokens: qcuEstimateTokens(match[0]) });
++	}
++	return items;
++}
++
+ function qcuMessagesForRisk(ctx: ExtensionCommandContext): any[] {
+ 	const sm = ctx.sessionManager as any;
+ 	const built = typeof sm.buildSessionContext === "function" ? sm.buildSessionContext() : undefined;
+@@ -334,6 +385,33 @@ function qcuMessagesForRisk(ctx: ExtensionCommandContext): any[] {
+ 	return branch.filter((entry: any) => entry?.type === "message").map((entry: any) => entry.message);
+ }
+ 
++/**
++ * Reconstruct the system prompt the provider actually receives from the
++ * session transcript: pi sends system messages via getSystemMessageText()
++ * (content + merged section values), and request transforms read the
++ * transcript — NOT ctx.getSystemPrompt(), which re-renders from options that
++ * may diverge from what was sent (observed: preset-filtered transcript vs
++ * unfiltered render). Sections merge last-wins, null deletes (pi semantics).
++ */
++function qcuTranscriptSystemPrompt(ctx: ExtensionCommandContext): string {
++	const sm = ctx.sessionManager as any;
++	const built = typeof sm?.buildSessionContext === "function" ? sm.buildSessionContext() : undefined;
++	const messages = Array.isArray(built?.messages) ? built.messages : [];
++	const content: string[] = [];
++	const sections = new Map<string, string>();
++	for (const message of messages) {
++		if (message?.role !== "system") continue;
++		const text = typeof message.content === "string" ? message.content : "";
++		if (text.length > 0) content.push(text);
++		for (const [name, value] of Object.entries(message.sections ?? {})) {
++			if (value === null) sections.delete(name);
++			else if (typeof value === "string") sections.set(name, value);
++		}
++	}
++	if (content.length === 0 && sections.size === 0) return "";
++	return [...content, ...sections.values()].join("\n\n");
++}
++
+ export function buildQolContextUsageDetails(pi: ExtensionAPI, ctx: ExtensionCommandContext, promptOptions: unknown): QolContextUsageMessageDetails | undefined {
+ 	const usage = ctx.getContextUsage?.() as { contextWindow?: unknown; percent?: unknown; tokens?: unknown } | undefined;
+ 	const tokens = Number(usage?.tokens);
+@@ -342,16 +420,37 @@ export function buildQolContextUsageDetails(pi: ExtensionAPI, ctx: ExtensionComm
+ 	const contextWindow = Number(usage?.contextWindow ?? model.contextWindow);
+ 	const safeContextWindow = Number.isFinite(contextWindow) && contextWindow > 0 ? contextWindow : undefined;
+ 	const percent = Number(usage?.percent);
+-	const systemPrompt = ctx.getSystemPrompt?.() ?? "";
+-	const contextFiles = qcuUniqDetails(qcuDetailsFromItems(qcuPromptOptionArray(promptOptions, ["contextFiles", "agentsFiles", "memoryFiles"]), "context"));
+-	const skills = qcuSkillDetails(pi, promptOptions);
++	// Ground truth priority:
++	// 1. forceSystemPrompt from the last run's options — when an extension returns
++	//    {systemPrompt} in before_agent_start, pi's forced-prompt projection
++	//    replaces the request head with it and the transcript sections become a
++	//    shadow ledger (observed: pi-codegraph baking a pre-filter render).
++	// 2. Transcript system messages (what the provider receives normally).
++	// 3. Live render, only before the first turn.
++	const forcedPrompt = (() => {
++		const value = (promptOptions as Record<string, unknown> | null)?.forceSystemPrompt;
++		return typeof value === "string" && value.length > 0 ? value : undefined;
++	})();
++	const transcriptPrompt = forcedPrompt ? "" : qcuTranscriptSystemPrompt(ctx);
++	const systemPrompt = forcedPrompt || transcriptPrompt || ctx.getSystemPrompt?.() || "";
++	// Prototype (feat/context-actual): measure skills/context-file categories
++	// from the actually rendered system prompt; fall back to promptOptions only
++	// before the first turn has rendered one.
++	const promptSections = systemPrompt ? qcuParsePromptSections(systemPrompt) : new Map<string, string>();
++	const projectContextSection = promptSections.get("project_context");
++	const skillsSection = promptSections.get("skills");
++	const contextFiles = systemPrompt
++		? qcuContextFilesFromPrompt(projectContextSection)
++		: qcuUniqDetails(qcuDetailsFromItems(qcuPromptOptionArray(promptOptions, ["contextFiles", "agentsFiles", "memoryFiles"]), "context"));
++	const skills = systemPrompt ? qcuSkillsFromPrompt(skillsSection) : qcuSkillDetails(pi, promptOptions);
+ 	const extractedAgents = qcuExtractProjectAgents(systemPrompt);
+ 	const customAgents = qcuUniqDetails([...qcuDetailsFromItems(qcuPromptOptionArray(promptOptions, ["customAgents", "agents", "agentSnippets"]), "agent"), ...extractedAgents.agents]);
+ 	const { builtinTools, extensionTools, mcpTools, rawBuiltinToolTokens, rawExtensionToolTokens, rawMcpToolTokens } = qcuToolDetails(pi);
+ 	const { compactSummaries, rawCompactTokens, rawMessageTokens, stats } = qcuBuildMessageStats(ctx);
+ 	const rawCompactSummaryTokens = rawCompactTokens > 0 ? rawCompactTokens : qcuTokenSum(compactSummaries);
+-	const rawContextFiles = qcuTokenSum(contextFiles);
+-	const rawSkills = qcuTokenSum(skills);
++	// Section totals include wrapper/header lines the per-item sums miss.
++	const rawContextFiles = systemPrompt ? qcuEstimateTokens(projectContextSection ?? "") : qcuTokenSum(contextFiles);
++	const rawSkills = systemPrompt ? qcuEstimateTokens(skillsSection ?? "") : qcuTokenSum(skills);
+ 	const rawCustomAgents = Math.max(qcuTokenSum(customAgents), extractedAgents.tokens);
+ 	const rawSystemPromptTotal = qcuEstimateTokens(systemPrompt);
+ 	const rawSystemPrompt = Math.max(0, rawSystemPromptTotal - rawContextFiles - rawSkills - rawCustomAgents);
+@@ -390,7 +489,7 @@ export function buildQolContextUsageDetails(pi: ExtensionAPI, ctx: ExtensionComm
+ 			provider: modelProvider,
+ 			thinking: typeof thinking === "string" && thinking !== "off" ? thinking : undefined,
+ 		},
+-		note: promptOptions ? undefined : "Context-file and skill breakdowns become more precise after the next agent turn.",
++		note: forcedPrompt ? "Breakdown measured from the FORCED system prompt — an extension replaced the request head (before_agent_start returned systemPrompt); transcript sections are shadowed (chars/4 estimate)." : transcriptPrompt ? "Breakdown measured from the session transcript system prompt — what the provider actually receives (chars/4 estimate)." : systemPrompt ? "Breakdown measured from the live rendered system prompt (may include unsent items; chars/4 estimate)." : "Context-file and skill breakdowns become more precise after the next agent turn.",
+ 		skills,
+ 		usage: {
+ 			contextWindow: safeContextWindow,
+@@ -413,7 +512,7 @@ function qcuStem(theme: Theme, isLast: boolean): string {
+ 	return isLast ? theme.fg("borderMuted", "   ") : qcuBranch(theme, "│");
+ }
+ 
+-function qcuRenderDetailSection(lines: string[], title: string, items: QolContextDetailItem[], theme: Theme, options: { empty?: string; limit?: number; showDescriptions?: boolean } = {}): void {
++function qcuRenderDetailSection(lines: string[], title: string, items: QolContextDetailItem[], theme: Theme, options: { empty?: string; expandHint?: string; limit?: number; showDescriptions?: boolean } = {}): void {
+ 	if (items.length === 0) {
+ 		if (options.empty) {
+ 			lines.push("");
+@@ -432,11 +531,16 @@ function qcuRenderDetailSection(lines: string[], title: string, items: QolContex
+ 		lines.push(`${qcuBranch(theme, branch)}${theme.fg("text", qcuOneLine(item.label, 72))}: ${theme.fg("accent", qcuFormatTokens(item.tokens))} tokens${group}`);
+ 		if (options.showDescriptions && item.description) lines.push(`${qcuStem(theme, isLast)}${theme.fg("dim", qcuOneLine(item.description, 100))}`);
+ 	});
+-	if (items.length > visible.length) lines.push(`${qcuBranch(theme, "└")}${theme.fg("dim", `… ${items.length - visible.length} more`)}`);
++	if (items.length > visible.length) lines.push(`${qcuBranch(theme, "└")}${theme.fg("dim", `… ${items.length - visible.length} more${options.expandHint ? ` (${options.expandHint})` : ""}`)}`);
+ }
+ 
+-export function renderQolContextUsageMessage(message: any, _options: any, theme: Theme): { render(width: number): string[]; invalidate(): void } {
++export function renderQolContextUsageMessage(message: any, options: any, theme: Theme): { render(width: number): string[]; invalidate(): void } {
+ 	const details = message?.details as QolContextUsageMessageDetails | undefined;
++	// ctrl+o (app.tools.expand) reaches custom messages via setExpanded; honor it
++	// by lifting the per-section detail limits, and hint at it when collapsed.
++	const expanded = Boolean(options?.expanded);
++	const expandHint = expanded ? undefined : typeof options?.keyHint === "function" ? options.keyHint("app.tools.expand", "to expand") : "ctrl+o to expand";
++	const detailLimit = (limit: number) => (expanded ? Number.MAX_SAFE_INTEGER : limit);
+ 	return {
+ 		invalidate() {},
+ 		render(width: number): string[] {
+@@ -497,13 +601,13 @@ export function renderQolContextUsageMessage(message: any, _options: any, theme:
+ 			lines.push(`${qcuBranch(theme, "├")}context messages: ${theme.fg("accent", String(messageStats.contextMessages))} ${theme.fg("dim", `(${messageStats.branchEntries} branch entries)`)}`);
+ 			lines.push(`${qcuBranch(theme, "├")}user: ${messageStats.user} · assistant: ${messageStats.assistant} · tool results: ${messageStats.toolResult}`);
+ 			lines.push(`${qcuBranch(theme, "└")}bash: ${messageStats.bash} · custom: ${messageStats.custom} · compact summaries: ${messageStats.compact}`);
+-			qcuRenderDetailSection(lines, "MCP tools", details.mcpTools, theme, { empty: undefined, limit: 12, showDescriptions: false });
+-			qcuRenderDetailSection(lines, "Built-in tools", details.builtinTools, theme, { limit: details.mcpTools.length > 0 ? 8 : 12, showDescriptions: false });
+-			qcuRenderDetailSection(lines, "Extension tools", details.extensionTools, theme, { limit: 12, showDescriptions: false });
+-			qcuRenderDetailSection(lines, "Custom agents · /agents", details.customAgents, theme, { limit: 12, showDescriptions: false });
+-			qcuRenderDetailSection(lines, "Context / memory files", details.contextFiles, theme, { limit: 12, showDescriptions: false });
+-			qcuRenderDetailSection(lines, "Skills · /skills", details.skills, theme, { empty: "No skill commands discovered.", limit: 14, showDescriptions: false });
+-			qcuRenderDetailSection(lines, "Compact buffer", details.compactSummaries, theme, { limit: 6, showDescriptions: false });
++			qcuRenderDetailSection(lines, "MCP tools", details.mcpTools, theme, { empty: undefined, expandHint, limit: detailLimit(12), showDescriptions: false });
++			qcuRenderDetailSection(lines, "Built-in tools", details.builtinTools, theme, { expandHint, limit: detailLimit(details.mcpTools.length > 0 ? 8 : 12), showDescriptions: false });
++			qcuRenderDetailSection(lines, "Extension tools", details.extensionTools, theme, { expandHint, limit: detailLimit(12), showDescriptions: false });
++			qcuRenderDetailSection(lines, "Custom agents · /agents", details.customAgents, theme, { expandHint, limit: detailLimit(12), showDescriptions: false });
++			qcuRenderDetailSection(lines, "Context / memory files", details.contextFiles, theme, { expandHint, limit: detailLimit(12), showDescriptions: false });
++			qcuRenderDetailSection(lines, "Skills · /skills", details.skills, theme, { empty: "No skill commands discovered.", expandHint, limit: detailLimit(14), showDescriptions: false });
++			qcuRenderDetailSection(lines, "Compact buffer", details.compactSummaries, theme, { expandHint, limit: detailLimit(6), showDescriptions: false });
+ 			if (details.transcriptRisk?.error) {
+ 				const r = details.transcriptRisk;
+ 				const safe = r.error.replace(/[\x00-\x1f]+/g, " ").slice(0, 200);
