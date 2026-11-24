@@ -2602,7 +2602,7 @@ async function tmux(pi, args) {
 async function sourceTmuxPaneState(pi) {
   const pane = process.env.TMUX_PANE;
   if (!pane) return void 0;
-  const stdout = await tmux(pi, ["display-message", "-p", "-t", pane, PANE_STATE_FORMAT]);
+  const stdout = await tmux(pi, ["-u", "display-message", "-p", "-t", pane, PANE_STATE_FORMAT]);
   const [paneTty = "", windowActive = "", sessionId = "", windowId = "", ...name] = (stdout ?? "").replace(/\r?\n$/, "").split("	");
   if (!paneTty || !sessionId || !windowId) return void 0;
   return { paneTty, windowActive: windowActive === "1", sessionId, windowId, windowName: name.join("	") };
